@@ -12,7 +12,7 @@
     <!-- 頂部標題 -->
     <header class="w-full bg-white shadow-sm py-4 px-6 text-center">
         <h1 class="text-2xl font-bold text-orange-500">🍽️ 隨機食光 Random Eat</h1>
-        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，今天決定吃這家！</p>
+        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，只找真實明確的店家！</p>
     </header>
 
     <!-- 主要內容區 -->
@@ -26,7 +26,7 @@
             </div>
             
             <div id="status-text" class="text-sm text-slate-700 bg-slate-50 p-3 rounded-xl">
-                正在取得您的所在位置...
+                正在取得您的所在位置...[cite: 2]
             </div>
 
             <!-- 手動輸入地址備用方案 -->
@@ -35,10 +35,10 @@
                 <button onclick="searchByManualLocation()" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-lg font-medium hover:bg-slate-700 transition">搜尋</button>
             </div>
 
-            <!-- 搜尋距離選單（改為以內包含） -->
+            <!-- 搜尋距離選單 -->
             <div class="flex items-center justify-between pt-1 border-t border-slate-100 mt-1">
                 <label for="radius-select" class="text-xs font-medium text-slate-500">搜尋範圍上限：</label>
-                <select id="radius-select" onchange="changeRadius()" class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
+                <select id="radius-select" onchange="fetchNearbyRestaurants()" class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
                     <option value="1000">1 公里以內</option>
                     <option value="2000" selected>2 公里以內</option>
                     <option value="3000">3 公里以內</option>
@@ -65,14 +65,14 @@
             </div>
         </div>
 
-        <!-- 附近的餐廳清單 -->
+        <!-- 附近的明確餐廳清單 -->
         <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-slate-500">附近候選餐廳清單</span>
+                <span class="text-sm font-medium text-slate-500">附近明確店家清單</span>
                 <span id="restaurant-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md">0 家</span>
             </div>
             <div id="restaurant-list" class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                <p class="text-xs text-slate-400 text-center py-4">定位完成後將自動載入附近餐廳...</p>
+                <p class="text-xs text-slate-400 text-center py-4">定位完成後將自動載入附近店家...</p>
             </div>
         </div>
 
@@ -85,16 +85,14 @@
 
     <!-- JavaScript 邏輯 -->
     <script>
-        let currentLat = 22.6273; // 預設高雄市中心緯度
-        let currentLng = 120.3014; // 預設高雄市中心經度
+        let currentLat = 22.6273; 
+        let currentLng = 120.3014; 
         let restaurants = [];
 
-        // 頁面載入時自動定位
         window.onload = function() {
             getLocation();
         };
 
-        // 1. 取得當下位置 (GPS)
         function getLocation() {
             const statusText = document.getElementById('status-text');
             statusText.innerHTML = "📡 正在讀取 GPS 定位...";
@@ -113,14 +111,13 @@
                     fetchNearbyRestaurants();
                 },
                 (error) => {
-                    statusText.innerHTML = "⚠️ 定位失敗（可能因瀏覽器安全限制）。請嘗試在下方「手動輸入地標」。";
+                    statusText.innerHTML = "⚠️ 定位失敗，已載入預設範圍。請嘗試手動輸入地標。";
                     loadMockRestaurants();
                 },
                 { timeout: 8000, maximumAge: 60000, enableHighAccuracy: true }
             );
         }
 
-        // 手動輸入地址轉經緯度 (利用免費的 Nominatim API)
         async function searchByManualLocation() {
             const keyword = document.getElementById('manual-location').value.trim();
             const statusText = document.getElementById('status-text');
@@ -142,70 +139,67 @@
                     statusText.innerHTML = `✅ 已切換至：${data[0].display_name.substring(0, 30)}...`;
                     fetchNearbyRestaurants();
                 } else {
-                    statusText.innerHTML = `❌ 找不到「${keyword}」的座標，請嘗試更明確的地名。`;
+                    statusText.innerHTML = `❌ 找不到「${keyword}」的座標。`;
                 }
             } catch (e) {
-                statusText.innerHTML = `⚠️ 座標轉換失敗，請稍後再試。`;
+                statusText.innerHTML = `⚠️ 座標轉換失敗。`;
             }
         }
 
-        // 當使用者改變距離選單時觸發
-        function changeRadius() {
-            if (currentLat !== null && currentLng !== null) {
-                fetchNearbyRestaurants();
-            }
-        }
-
-        // 2. 抓取附近餐廳 (Overpass API 的 around 本身即為包含從中心點向外直到該半徑的範圍)
         async function fetchNearbyRestaurants() {
             const listContainer = document.getElementById('restaurant-list');
-            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在依選擇範圍搜尋美食...</p>';
+            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在搜尋附近真實店家...</p>';
 
             const radius = document.getElementById('radius-select').value; 
-            const query = `[out:json][timeout:10];(node["amenity"~"restaurant|fast_food|cafe"](around:${radius},${currentLat},${currentLng});way["amenity"~"restaurant|fast_food|cafe"](around:${radius},${currentLat},${currentLng}););out body;`;
+            const query = `[out:json][timeout:10];(node["amenity"="restaurant"](around:${radius},${currentLat},${currentLng});way["amenity"="restaurant"](around:${radius},${currentLat},${currentLng});node["amenity"="fast_food"](around:${radius},${currentLat},${currentLng});way["amenity"="fast_food"](around:${radius},${currentLat},${currentLng}););out body;`;
             const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
 
             try {
                 const response = await fetch(url);
                 const data = await response.json();
                 
+                // 定義黑名單：過濾掉看起來像主題、統稱或不合適的名稱
+                const genericNames = ["餐廳", "小吃", "速食", "飮食店", "便當", "水煮餐", "健康餐盒", "restaurant", "food", "cafe"];
+
                 restaurants = data.elements
                     .filter(item => item.tags && item.tags.name)
                     .map(item => ({
-                        name: item.tags.name,
-                        type: item.tags.cuisine || item.tags.amenity || '美食'
-                    }));
-
-                // 移除重複名稱的餐廳
-                restaurants = Array.from(new Set(restaurants.map(r => r.name)))
-                    .map(name => {
-                        return restaurants.find(r => r.name === name);
+                        name: item.tags.name.trim(),
+                        type: item.tags.cuisine || item.tags.amenity || '餐飲'
+                    }))
+                    .filter(r => {
+                        // 排除過短、純英文或是符合黑名單統稱的名字
+                        const lowerName = r.name.toLowerCase();
+                        const isGeneric = genericNames.some(g => lowerName === g || lowerName.includes("健康低卡"));
+                        return r.name.length > 1 && !isGeneric;
                     });
 
-                if (restaurants.length < 3) {
+                // 移除重複名稱
+                restaurants = Array.from(new Set(restaurants.map(r => r.name)))
+                    .map(name => restaurants.find(r => r.name === name));
+
+                if (restaurants.length < 2) {
                     loadMockRestaurants();
                 } else {
                     renderRestaurants();
                 }
             } catch (e) {
-                console.log("API 查詢失敗，使用備用資料", e);
                 loadMockRestaurants();
             }
         }
 
-        // 備用餐廳資料
         function loadMockRestaurants() {
+            // 提供真實明確的店家範例備用
             restaurants = [
-                { name: "巷仔口陽春麵", type: "小吃" },
-                { name: "轉角咖啡輕食", type: "咖啡廳" },
-                { name: "川味牛肉麵館", type: "麵食" },
-                { name: "日式平價壽司丼飯", type: "日式料理" },
-                { name: "健康低卡水煮餐", type: "便當" }
+                { name: "好食·日輕食健康餐盒", type: "健康餐" },
+                { name: "卜派食堂 低GI水煮健康餐盒", type: "健康餐" },
+                { name: "鄧白盒子健康低卡餐盒", type: "健康餐" },
+                { name: "均衡食堂", type: "健康餐" },
+                { name: "水煮食代健康餐食專賣", type: "健康餐" }
             ];
             renderRestaurants();
         }
 
-        // 渲染清單
         function renderRestaurants() {
             const listContainer = document.getElementById('restaurant-list');
             const countTag = document.getElementById('restaurant-count');
@@ -230,7 +224,6 @@
             }
         }
 
-        // 3. 抽獎動畫與邏輯
         function startRoulette() {
             if (restaurants.length === 0) return;
 
@@ -267,7 +260,6 @@
                     drawBtn.disabled = false;
                     drawBtn.innerText = "🎲 再抽一次";
 
-                    // 4. 設定導航按鈕連結
                     const navLink = document.getElementById('nav-link');
                     navLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(chosen.name)}`;
                     navContainer.classList.remove('hidden');
