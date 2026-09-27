@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隨機食光 - 今天吃什麼？</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen flex flex-col items-center justify-between text-slate-800">
+
+    <!-- 頂部標題 -->
+    <header class="w-full bg-white shadow-sm py-4 px-6 text-center">
+        <h1 class="text-2xl font-bold text-orange-500">🍽️ 隨機食光 Random Eat</h1>
+        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，今天決定吃這家！</p>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="w-full max-w-md p-4 flex-1 flex flex-col gap-4">
+
+        <!-- 定位與距離設定卡片 -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-slate-500">目前位置與範圍</span>
+                <button onclick="getLocation()"
+                    class="text-xs bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full font-medium hover:bg-orange-100 transition">重新定位</button>
+            </div>
+
+            <div id="status-text" class="text-sm text-slate-700 bg-slate-50 p-3 rounded-xl">
+                正在取得您的所在位置...
+            </div>
+
+            <!-- 新增：搜尋距離選單 -->
+            <div class="flex items-center justify-between pt-1">
+                <label for="radius-select" class="text-xs font-medium text-slate-500">搜尋範圍半徑：</label>
+                <select id="radius-select" onchange="changeRadius()"
+                    class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
+                    <option value="1000">1 公里內</option>
+                    <option value="2000" selected>2 公里內</option>
+                    <option value="3000">3 公里內</option>
+                    <option value="5000">5 公里內</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 抽獎/決定區 -->
+        <div
+            class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center text-center gap-4">
+            <div id="roulette-box"
+                class="w-full py-8 bg-gradient-to-br from-orange-400 to-amber-500 rounded-2xl text-white shadow-inner flex flex-col items-center justify-center min-h-[140px] px-4 transition-all duration-300">
+                <span id="result-title" class="text-sm opacity-90">準備好了嗎？</span>
+                <h2 id="result-name" class="text-xl font-bold mt-1">點擊下方按鈕抽美食！</h2>
+            </div>
+
+            <button id="draw-btn" onclick="startRoulette()" disabled
+                class="w-full py-3.5 bg-slate-200 text-slate-400 font-bold rounded-xl shadow-md transition-all cursor-not-allowed">
+                🎲 開始隨機抽獎
+            </button>
+
+            <div id="nav-container" class="w-full hidden">
+                <a id="nav-link" href="#" target="_blank"
+                    class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition">
+                    📍 開啟 Google 地圖導航
+                </a>
+            </div>
+        </div>
+
+        <!-- 附近的餐廳清單 -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-slate-500">附近候選餐廳清單</span>
+                <span id="restaurant-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md">0 家</span>
+            </div>
+            <div id="restaurant-list" class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                <p class="text-xs text-slate-400 text-center py-4">定位完成後將自動載入附近餐廳...</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 頁尾 -->
+    <footer class="py-4 text-xs text-slate-400">
+        Random_eat &copy; 2026
+    </footer>
+
+    <!-- JavaScript 邏輯 -->
+    <script>
+        let currentLat = null;
+        let currentLng = null;
+        let restaurants = [];
+
+        // 頁面載入時自動定位
+        window.onload = function () {
+            getLocation();
+        };
+
+        // 1. 取得當下位置
+        function getLocation() {
+            const statusText = document.getElementById('status-text');
+            statusText.innerHTML = "📡 正在讀取 GPS 定位...";
+
+            if (!navigator.geolocation) {
+                statusText.innerHTML = "❌ 您的瀏覽器不支援地理定位功能";
+                loadMockRestaurants();
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    currentLat = position.coords.latitude;
+                    currentLng = position.coords.longitude;
+                    statusText.innerHTML = `✅ 已定位成功<br><span class="text-xs text-slate-400">緯度: ${currentLat.toFixed(4)}, 經度: ${currentLng.toFixed(4)}</span>`;
+
+                    // 取得位置後，抓取附近餐廳
+                    fetchNearbyRestaurants();
+                },
+                (error) => {
+                    statusText.innerHTML = "⚠️ 定位失敗或拒絕權限，已載入預設範圍餐廳。";
+                    loadMockRestaurants();
+                },
+                { timeout: 10000, maximumAge: 60000 }
+            );
+        }
+
+        // 當使用者改變距離選單時觸發
+        function changeRadius() {
+            if (currentLat !== null && currentLng !== null) {
+                fetchNearbyRestaurants();
+            }
+        }
+
+        // 2. 抓取附近餐廳 (利用 OpenStreetMap Overpass API)
+        async function fetchNearbyRestaurants() {
+            if (currentLat === null || currentLng === null) {
+                loadMockRestaurants();
+                return;
+            }
+
+            const listContainer = document.getElementById('restaurant-list');
+            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在依選擇範圍搜尋美食...</p>';
+
+            // 從下拉選單取得公尺數
+            const radius = document.getElementById('radius-select').value;
+            const query = `[out:json][timeout:10];(node["amenity"~"restaurant|fast_food|cafe"](around:${radius},${currentLat},${currentLng});way["amenity"~"restaurant|fast_food|cafe"](around:${radius},${currentLat},${currentLng}););out body;`;
+            const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                restaurants = data.elements
+                    .filter(item => item.tags && item.tags.name)
+                    .map(item => ({
+                        name: item.tags.name,
+                        lat: item.lat || (item.center && item.center.lat),
+                        lon: item.lon || (item.center && item.center.lon),
+                        type: item.tags.cuisine || item.tags.amenity || '美食'
+                    }));
+
+                // 如果抓不到夠多的資料，補一些通用的備用資料
+                if (restaurants.length < 3) {
+                    loadMockRestaurants();
+                } else {
+                    renderRestaurants();
+                }
+            } catch (e) {
+                console.log("API 查詢失敗，使用備用資料", e);
+                loadMockRestaurants();
+            }
+        }
+
+        // 備用餐廳資料
+        function loadMockRestaurants() {
+            restaurants = [
+                { name: "巷仔口陽春麵", type: "小吃", lat: currentLat ? currentLat + 0.001 : 22.62, lon: currentLng ? currentLng + 0.001 : 120.30 },
+                { name: "轉角咖啡輕食", type: "咖啡廳", lat: currentLat ? currentLat - 0.001 : 22.62, lon: currentLng ? currentLng - 0.001 : 120.30 },
+                { name: "川味牛肉麵館", type: "麵食", lat: currentLat ? currentLat + 0.002 : 22.62, lon: currentLng ? currentLng - 0.001 : 120.30 },
+                { name: "日式平價壽司丼飯", type: "日式料理", lat: currentLat ? currentLat - 0.002 : 22.62, lon: currentLng ? currentLng + 0.002 : 120.30 },
+                { name: "健康低卡水煮餐", type: "便當", lat: currentLat ? currentLat + 0.0015 : 22.62, lon: currentLng ? currentLng + 0.0015 : 120.30 }
+            ];
+            renderRestaurants();
+        }
+
+        // 渲染清單
+        function renderRestaurants() {
+            const listContainer = document.getElementById('restaurant-list');
+            const countTag = document.getElementById('restaurant-count');
+            const drawBtn = document.getElementById('draw-btn');
+
+            countTag.innerText = `${restaurants.length} 家`;
+            listContainer.innerHTML = '';
+
+            restaurants.forEach((r, index) => {
+                listContainer.innerHTML += `
+                    <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-xs">
+                        <span class="font-medium text-slate-700">${index + 1}. ${r.name}</span>
+                        <span class="text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-100">${r.type}</span>
+                    </div>
+                `;
+            });
+
+            if (restaurants.length > 0) {
+                drawBtn.disabled = false;
+                drawBtn.classList.remove('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+                drawBtn.classList.add('bg-orange-500', 'hover:bg-orange-600', 'text-white', 'shadow-lg');
+            }
+        }
+
+        // 3. 抽獎動畫與邏輯
+        function startRoulette() {
+            if (restaurants.length === 0) return;
+
+            const drawBtn = document.getElementById('draw-btn');
+            const resultName = document.getElementById('result-name');
+            const resultTitle = document.getElementById('result-title');
+            const rouletteBox = document.getElementById('roulette-box');
+            const navContainer = document.getElementById('nav-container');
+
+            drawBtn.disabled = true;
+            navContainer.classList.add('hidden');
+            resultTitle.innerText = "🎲 命運轉動中...";
+
+            let counter = 0;
+            const totalSteps = 20;
+            let speed = 50;
+
+            function shuffleAnimation() {
+                const randomIndex = Math.floor(Math.random() * restaurants.length);
+                resultName.innerText = restaurants[randomIndex].name;
+                rouletteBox.classList.add('scale-105');
+                setTimeout(() => rouletteBox.classList.remove('scale-105'), 50);
+
+                counter++;
+                if (counter < totalSteps) {
+                    speed += 15;
+                    setTimeout(shuffleAnimation, speed);
+                } else {
+                    const finalIndex = Math.floor(Math.random() * restaurants.length);
+                    const chosen = restaurants[finalIndex];
+
+                    resultTitle.innerText = "🎉 今天決定吃這家！";
+                    resultName.innerText = chosen.name;
+                    drawBtn.disabled = false;
+                    drawBtn.innerText = "🎲 再抽一次";
+
+                    // 4. 設定導航按鈕連結
+                    const navLink = document.getElementById('nav-link');
+                    navLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(chosen.name)}`;
+                    navContainer.classList.remove('hidden');
+                }
+            }
+
+            shuffleAnimation();
+        }
+    </script>
+</body>
+
+</html>
