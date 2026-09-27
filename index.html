@@ -12,7 +12,7 @@
     <!-- 頂部標題 -->
     <header class="w-full bg-white shadow-sm py-4 px-6 text-center">
         <h1 class="text-2xl font-bold text-orange-500">🍽️ 隨機食光 Random Eat</h1>
-        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，只找附近的真實店家！</p>
+        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，自動探索附近真實店家！</p>
     </header>
 
     <!-- 主要內容區 -->
@@ -26,7 +26,7 @@
             </div>
             
             <div id="status-text" class="text-sm text-slate-700 bg-slate-50 p-3 rounded-xl">
-                正在取得您的所在位置...[cite: 2]
+                正在取得您的所在位置...
             </div>
 
             <!-- 手動輸入地址備用方案 -->
@@ -148,7 +148,7 @@
 
         // 計算兩點之間的直線距離 (單位: 公里)
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371; // 地球半徑 (km)
+            const R = 6371; 
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = 
@@ -161,20 +161,22 @@
 
         async function fetchNearbyRestaurants() {
             const listContainer = document.getElementById('restaurant-list');
-            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在搜尋附近真實店家...</p>';
+            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在自動搜尋附近真實店家...</p>';
 
             const radiusMeters = parseInt(document.getElementById('radius-select').value); 
             const radiusKm = radiusMeters / 1000;
 
-            const query = `[out:json][timeout:10];(node["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});way["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});node["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng});way["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng}););out body geom;`;
+            const query = `[out:json][timeout:15];(node["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});way["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});node["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng});way["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng}););out body geom;`;
             
-            const url = `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`;
+            const targetUrl = `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`;
+            // 透過 CORS 代理繞過 GitHub Pages 跨域限制
+            const url = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
             try {
                 const response = await fetch(url);
                 
                 if (!response.ok) {
-                    throw new Error(`API 伺服器忙碌中 (狀態碼: ${response.status})`);
+                    throw new Error(`伺服器回應異常 (狀態碼: ${response.status})`);
                 }
 
                 const data = await response.json();
@@ -195,7 +197,6 @@
                     .filter(r => {
                         const lowerName = r.name.toLowerCase();
                         const isGeneric = genericNames.some(g => lowerName === g || lowerName.includes("健康低卡"));
-                        // 【嚴格過濾】確保名稱有效且距離絕對小於等於選擇的半徑範圍
                         return r.name.length > 1 && !isGeneric && r.distance <= radiusKm;
                     });
 
@@ -204,13 +205,13 @@
                     .map(name => rawRestaurants.find(r => r.name === name));
 
                 if (restaurants.length < 2) {
-                    console.log("附近實體店家較少，載入在地預設範圍店家");
+                    console.log("附近自動抓取的店家較少，載入預設範圍店家");
                     loadMockRestaurants();
                 } else {
                     renderRestaurants();
                 }
             } catch (e) {
-                console.warn("API 查詢逾時或失敗，已自動載入精選店家清單:", e.message);
+                console.warn("自動抓取失敗，已自動載入備用清單:", e.message);
                 loadMockRestaurants();
             }
         }
