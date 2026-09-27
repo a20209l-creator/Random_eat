@@ -152,13 +152,20 @@
 
             const radius = document.getElementById('radius-select').value; 
             const query = `[out:json][timeout:10];(node["amenity"="restaurant"](around:${radius},${currentLat},${currentLng});way["amenity"="restaurant"](around:${radius},${currentLat},${currentLng});node["amenity"="fast_food"](around:${radius},${currentLat},${currentLng});way["amenity"="fast_food"](around:${radius},${currentLat},${currentLng}););out body;`;
-            const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+            
+            // 使用更穩定的備用 API 伺服器節點
+            const url = `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`;
 
             try {
                 const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API 伺服器忙碌中 (狀態碼: ${response.status})`);
+                }
+
                 const data = await response.json();
                 
-                // 定義黑名單：過濾掉看起來像主題、統稱或不合適的名稱
+                // 定義黑名單：過濾掉統稱或不合適的名稱
                 const genericNames = ["餐廳", "小吃", "速食", "飮食店", "便當", "水煮餐", "健康餐盒", "restaurant", "food", "cafe"];
 
                 restaurants = data.elements
@@ -168,7 +175,6 @@
                         type: item.tags.cuisine || item.tags.amenity || '餐飲'
                     }))
                     .filter(r => {
-                        // 排除過短、純英文或是符合黑名單統稱的名字
                         const lowerName = r.name.toLowerCase();
                         const isGeneric = genericNames.some(g => lowerName === g || lowerName.includes("健康低卡"));
                         return r.name.length > 1 && !isGeneric;
@@ -184,12 +190,12 @@
                     renderRestaurants();
                 }
             } catch (e) {
+                console.warn("API 查詢逾時或失敗，已自動載入精選店家清單:", e.message);
                 loadMockRestaurants();
             }
         }
 
         function loadMockRestaurants() {
-            // 提供真實明確的店家範例備用
             restaurants = [
                 { name: "好食·日輕食健康餐盒", type: "健康餐" },
                 { name: "卜派食堂 低GI水煮健康餐盒", type: "健康餐" },
