@@ -38,7 +38,7 @@
             <!-- 搜尋距離選單 -->
             <div class="flex items-center justify-between pt-1 border-t border-slate-100 mt-1">
                 <label for="radius-select" class="text-xs font-medium text-slate-500">搜尋範圍上限：</label>
-                <select id="radius-select" onchange="fetchNearbyRestaurants()" class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
+                <select id="radius-select" onchange="onRadiusChange()" class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
                     <option value="1000">1 公里以內</option>
                     <option value="2000" selected>2 公里以內</option>
                     <option value="3000">3 公里以內</option>
@@ -68,7 +68,7 @@
         <!-- 附近的真實餐廳清單 -->
         <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-slate-500">附近真實店家清單</span>
+                <span class="text-sm font-medium text-slate-500" id="list-title">附近真實店家清單</span>
                 <span id="restaurant-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md">0 家</span>
             </div>
             <div id="restaurant-list" class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
@@ -85,13 +85,24 @@
 
     <!-- JavaScript 邏輯 -->
     <script>
-        let currentLat = 22.6273; 
-        let currentLng = 120.3014; 
+        let currentLat = 22.6372; 
+        let currentLng = 120.3520; 
         let restaurants = [];
+
+        // Overpass API 多節點 Endpoints 陣列
+        const OVERPASS_ENDPOINTS = [
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter"
+        ];
 
         window.onload = function() {
             getLocation();
         };
+
+        function onRadiusChange() {
+            fetchNearbyRestaurants();
+        }
 
         // 1. GPS 定位
         function getLocation() {
@@ -100,7 +111,7 @@
             
             if (!navigator.geolocation) {
                 statusText.innerHTML = "❌ 瀏覽器不支援定位，請使用手動輸入";
-                setNoRestaurantState("瀏覽器不支援地理定位");
+                setErrorState("瀏覽器不支援地理定位");
                 return;
             }
 
@@ -108,6 +119,7 @@
                 (position) => {
                     currentLat = position.coords.latitude;
                     currentLng = position.coords.longitude;
+                    console.log(`[Random_eat] 使用者位置：\n${currentLat}, ${currentLng}`);
                     statusText.innerHTML = `✅ GPS 定位成功<br><span class="text-xs text-slate-400">緯度: ${currentLat.toFixed(4)}, 經度: ${currentLng.toFixed(4)}</span>`;
                     fetchNearbyRestaurants();
                 },
@@ -118,7 +130,7 @@
                     else if (error.code === error.TIMEOUT) errorMsg = "定位逾時";
                     
                     statusText.innerHTML = `⚠️ ${errorMsg}。請使用下方「手動輸入地標」。`;
-                    setNoRestaurantState(errorMsg);
+                    setErrorState(errorMsg);
                 },
                 { timeout: 10000, maximumAge: 60000, enableHighAccuracy: true }
             );
@@ -143,6 +155,7 @@
                 if (data && data.length > 0) {
                     currentLat = parseFloat(data[0].lat);
                     currentLng = parseFloat(data[0].lon);
+                    console.log(`[Random_eat] 手動搜尋位置：\n${currentLat}, ${currentLng}`);
                     statusText.innerHTML = `✅ 已切換至：${data[0].display_name.substring(0, 30)}...`;
                     fetchNearbyRestaurants();
                 } else {
@@ -155,9 +168,9 @@
             }
         }
 
-        // 3. 計算兩點距離 (Haversine formula) 單位: 公里
+        // 3. 計算兩點距離 (Haversine formula)
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371; 
+            const R = 6371; // km
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = 
@@ -165,44 +178,90 @@
                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
                 Math.sin(dLon/2) * Math.sin(dLon/2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
+            return R * c; // 回傳公里數
         }
 
-        // 4. 抓取真實餐廳資料 (Overpass API)
+        // 4. 具備多節點 Fallback 與動態擴大範圍的搜尋核心
         async function fetchNearbyRestaurants() {
             const listContainer = document.getElementById('restaurant-list');
-            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在從 OpenStreetMap 查詢附近真實餐飲店家...</p>';
-
-            const radiusMeters = parseInt(document.getElementById('radius-select').value); 
-            const radiusKm = radiusMeters / 1000;
-
-            // 擴大餐飲標籤：restaurant, fast_food, cafe, food_court, ice_cream, bakery
-            const query = `[out:json][timeout:20];(
-                node["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bakery"](around:${radiusMeters},${currentLat},${currentLng});
-                way["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bakery"](around:${radiusMeters},${currentLat},${currentLng});
-            );out body geom;`;
+            const statusText = document.getElementById('status-text');
             
-            const targetUrl = `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`;
-            const url = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            const selectedRadiusMeters = parseInt(document.getElementById('radius-select').value);
+            // 搜尋半徑擴大機制順序：使用者選定值 → 5000m → 10000m
+            let searchRadii = [selectedRadiusMeters];
+            if (selectedRadiusMeters < 5000) searchRadii.push(5000);
+            if (selectedRadiusMeters < 10000) searchRadii.push(10000);
 
-            try {
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`伺服器回應異常 (狀態碼: ${response.status})`);
+            listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在搜尋附近真實餐飲店家...</p>';
+
+            let rawRestaurants = [];
+            let successfulRadius = selectedRadiusMeters;
+
+            for (let radiusMeters of searchRadii) {
+                const radiusKm = radiusMeters / 1000;
+                console.log(`[Random_eat] 搜尋半徑：\n${radiusMeters}m`);
+
+                if (radiusMeters > selectedRadiusMeters) {
+                    statusText.innerHTML = `⚠️ 附近資料較少，已自動擴大搜尋範圍至 ${radiusMeters / 1000} 公里`;
                 }
 
-                const data = await response.json();
-                
-                // 過濾掉過短或純屬統稱的無效店名
+                const query = `[out:json][timeout:25];(
+                    node["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});
+                    way["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});
+                    node["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng});
+                    way["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng});
+                    node["amenity"="cafe"](around:${radiusMeters},${currentLat},${currentLng});
+                    way["amenity"="cafe"](around:${radiusMeters},${currentLat},${currentLng});
+                    node["amenity"="food_court"](around:${radiusMeters},${currentLat},${currentLng});
+                    way["amenity"="food_court"](around:${radiusMeters},${currentLat},${currentLng});
+                );out body geom;`;
+
+                let fetchedData = null;
+
+                // 嘗試多個 Overpass API Endpoints (Fallback)
+                for (let i = 0; i < OVERPASS_ENDPOINTS.length; i++) {
+                    const endpoint = OVERPASS_ENDPOINTS[i];
+                    console.log(`[Random_eat] 嘗試 Overpass #${i + 1}：\n${endpoint}`);
+
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超時
+
+                        const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+
+                        console.log(`[Random_eat] HTTP：\n${response.status}`);
+
+                        if (!response.ok) {
+                            console.warn(`[Random_eat] Overpass #${i + 1} 失敗：${response.status}`);
+                            continue; // 換下一個 endpoint
+                        }
+
+                        const data = await response.json();
+                        fetchedData = data;
+                        break; // 成功取得資料，跳出 endpoint 迴圈
+                    } catch (err) {
+                        console.warn(`[Random_eat] Overpass #${i + 1} 發生錯誤/逾時：`, err.message);
+                        // 繼續嘗試下一個 endpoint
+                    }
+                }
+
+                // 如果所有 endpoint 在此半徑都失敗，跳出半徑迴圈進入錯誤處理
+                if (!fetchedData) {
+                    break;
+                }
+
+                // 解析並處理 OSM 資料
                 const genericNames = ["餐廳", "小吃", "速食", "飮食店", "便當", "水煮餐", "健康餐盒", "飮品", "飮料店", "restaurant", "food", "cafe", "bakery"];
-
-                let rawRestaurants = [];
-
-                if (data.elements && data.elements.length > 0) {
-                    data.elements.forEach(item => {
+                
+                if (fetchedData.elements && fetchedData.elements.length > 0) {
+                    console.log(`[Random_eat] 找到：\n${fetchedData.elements.length} 筆`);
+                    
+                    fetchedData.elements.forEach(item => {
                         if (!item.tags || !item.tags.name) return;
-                        
+
                         const name = item.tags.name.trim();
                         const lowerName = name.toLowerCase();
                         if (name.length <= 1 || genericNames.includes(lowerName)) return;
@@ -214,28 +273,34 @@
                             itemLat = item.center.lat;
                             itemLon = item.center.lon;
                         } else if (!itemLat && item.geometry && item.geometry.length > 0) {
-                            // 計算 geometry 的平均中心點作為 way 的座標
                             let sumLat = 0, sumLon = 0;
                             item.geometry.forEach(g => { sumLat += g.lat; sumLon += g.lon; });
                             itemLat = sumLat / item.geometry.length;
                             itemLon = sumLon / item.geometry.length;
                         }
 
-                        if (!itemLat || !itemLon) return;
+                        if (itemLat === undefined || itemLon === undefined) return;
 
                         const dist = calculateDistance(currentLat, currentLng, itemLat, itemLon);
 
-                        // 嚴格過濾距離小於等於選擇範圍的店家
+                        // 嚴格過濾距離小於等於當前檢查半徑的店家
                         if (dist <= radiusKm) {
+                            // 類型辨識與正確標示
+                            let rawAmenity = item.tags.amenity || 'restaurant';
+                            let displayType = '餐廳';
+                            if (rawAmenity === 'fast_food') displayType = '速食店';
+                            else if (rawAmenity === 'cafe') displayType = '咖啡廳';
+                            else if (rawAmenity === 'food_court') displayType = '美食街';
+                            else if (item.tags.cuisine) displayType = item.tags.cuisine;
+
                             rawRestaurants.push({
                                 id: item.id,
                                 name: name,
                                 lat: itemLat,
                                 lon: itemLon,
-                                type: item.tags.cuisine || item.tags.amenity || '餐飲',
+                                type: displayType,
                                 address: item.tags["addr:full"] || item.tags["addr:street"] || "",
                                 phone: item.tags.phone || item.tags["contact:phone"] || "",
-                                website: item.tags.website || item.tags["contact:website"] || "",
                                 opening_hours: item.tags.opening_hours || "",
                                 distance: dist
                             });
@@ -244,9 +309,9 @@
                 }
 
                 // 智慧去重機制：結合 OSM id 與「名稱 + 座標距離（小於 30 公尺視為同一家）」避免重複
+                console.log(`[Random_eat] 原始過濾後：\n${rawRestaurants.length} 筆`);
                 let uniqueMap = new Map();
                 rawRestaurants.forEach(r => {
-                    // 檢查是否有極近距離且同名的重複項目
                     let isDuplicate = false;
                     for (let [existingId, existingR] of uniqueMap.entries()) {
                         const nameMatch = existingR.name === r.name;
@@ -262,20 +327,26 @@
                 });
 
                 restaurants = Array.from(uniqueMap.values());
+                console.log(`[Random_eat] 去除重複：\n${restaurants.length} 筆`);
 
-                // 依距離由近到遠排序
-                restaurants.sort((a, b) => a.distance - b.distance);
-
-                // 狀態分流處理 (0家, 1家, 2家以上)
-                if (restaurants.length === 0) {
-                    setNoRestaurantState("附近沒有找到符合條件的餐廳");
-                } else {
-                    renderRestaurants();
+                // 如果在此半徑找到 2 家以上，或已經擴大到最大半徑 10000m，就停止擴大
+                if (restaurants.length >= 2 || radiusMeters >= 10000) {
+                    successfulRadius = radiusMeters;
+                    break;
                 }
+            }
 
-            } catch (e) {
-                console.warn("Overpass API 查詢失敗:", e.message);
+            // 依實際距離由近到遠排序
+            restaurants.sort((a, b) => a.distance - b.distance);
+            console.log(`[Random_eat] 最終餐廳：\n${restaurants.length} 筆`);
+
+            // 最終狀態分流處理 (0家, 1家, 多家 或 全部節點失敗)
+            if (fetchedData === null && restaurants.length === 0) {
                 setErrorState("餐廳搜尋暫時失敗，請重新搜尋");
+            } else if (restaurants.length === 0) {
+                setNoRestaurantState("附近沒有找到符合條件的餐廳");
+            } else {
+                renderRestaurants();
             }
         }
 
@@ -284,18 +355,19 @@
             const listContainer = document.getElementById('restaurant-list');
             const countTag = document.getElementById('restaurant-count');
             const drawBtn = document.getElementById('draw-btn');
+            const listTitle = document.getElementById('list-title');
 
             countTag.innerText = `${restaurants.length} 家`;
+            listTitle.innerText = `附近真實店家清單`;
             listContainer.innerHTML = '';
 
             restaurants.forEach((r, index) => {
+                // 距離格式化：小於 1 公里顯示公尺，大於等於 1 公里顯示公里
                 const distStr = r.distance < 1 ? `${Math.round(r.distance * 1000)} 公尺` : `${r.distance.toFixed(1)} 公里`;
                 
-                // 組裝額外詳細資訊（若 OSM 有提供）
                 let extraInfo = '';
                 if (r.address) extraInfo += `<span class="block text-[10px] text-slate-400">地址: ${r.address}</span>`;
                 if (r.opening_hours) extraInfo += `<span class="block text-[10px] text-slate-400">營業時間: ${r.opening_hours}</span>`;
-                if (r.phone) extraInfo += `<span class="block text-[10px] text-slate-400">電話: ${r.phone}</span>`;
 
                 listContainer.innerHTML += `
                     <div class="flex flex-col bg-slate-50 px-3 py-2 rounded-xl text-xs gap-1">
@@ -311,7 +383,7 @@
                 `;
             });
 
-            // 只要有 1 家或以上，就允許抽獎（符合 1 家可抽、多家中選規則）
+            // 1 家或多商家皆可抽獎
             if (restaurants.length > 0) {
                 drawBtn.disabled = false;
                 drawBtn.classList.remove('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
@@ -396,13 +468,14 @@
                     const chosen = restaurants[finalIndex];
                     
                     resultTitle.innerText = "🎉 今天決定吃這家！";
-                    resultName.innerText = `${chosen.name} (${chosen.distance < 1 ? Math.round(chosen.distance * 1000) + '公尺' : chosen.distance.toFixed(1) + '公里'})`;
+                    const distStr = chosen.distance < 1 ? `${Math.round(chosen.distance * 1000)}公尺` : `${chosen.distance.toFixed(1)}公里`;
+                    resultName.innerText = `${chosen.name} (${distStr})`;
                     drawBtn.disabled = false;
                     drawBtn.innerText = "🎲 再抽一次";
 
-                    // 升級 Google Maps 導航連結：同時帶入「餐廳名稱 + 經緯度座標」確保高精準定位
+                    // 結合餐廳名稱與真實經緯度的精確導航 URL
                     const navLink = document.getElementById('nav-link');
-                    navLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(chosen.name)}&query_place_id=&center=${chosen.lat},${chosen.lon}`;
+                    navLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(chosen.name)}&center=${chosen.lat},${chosen.lon}`;
                     navContainer.classList.remove('hidden');
                 }
             }
