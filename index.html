@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +7,6 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-
 <body class="bg-slate-50 min-h-screen flex flex-col items-center justify-between text-slate-800">
 
     <!-- 頂部標題 -->
@@ -19,49 +17,49 @@
 
     <!-- 主要內容區 -->
     <main class="w-full max-w-md p-4 flex-1 flex flex-col gap-4">
-
-        <!-- 定位與距離設定卡片 -->
+        
+        <!-- 定位與範圍設定卡片 -->
         <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-slate-500">目前位置與範圍</span>
-                <button onclick="getLocation()"
-                    class="text-xs bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full font-medium hover:bg-orange-100 transition">重新定位</button>
+                <span class="text-sm font-medium text-slate-500">位置與範圍設定</span>
+                <button onclick="getLocation()" class="text-xs bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full font-medium hover:bg-orange-100 transition">重新自動定位</button>
             </div>
-
+            
             <div id="status-text" class="text-sm text-slate-700 bg-slate-50 p-3 rounded-xl">
                 正在取得您的所在位置...
             </div>
 
-            <!-- 新增：搜尋距離選單 -->
-            <div class="flex items-center justify-between pt-1">
-                <label for="radius-select" class="text-xs font-medium text-slate-500">搜尋範圍半徑：</label>
-                <select id="radius-select" onchange="changeRadius()"
-                    class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
-                    <option value="1000">1 公里內</option>
-                    <option value="2000" selected>2 公里內</option>
-                    <option value="3000">3 公里內</option>
-                    <option value="5000">5 公里內</option>
+            <!-- 手動輸入地址備用方案 -->
+            <div class="flex gap-2 pt-1">
+                <input type="text" id="manual-location" placeholder="或輸入地標/路名 (例: 高雄火車站)" class="flex-1 text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:border-orange-500">
+                <button onclick="searchByManualLocation()" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-lg font-medium hover:bg-slate-700 transition">搜尋</button>
+            </div>
+
+            <!-- 搜尋距離選單（改為以內包含） -->
+            <div class="flex items-center justify-between pt-1 border-t border-slate-100 mt-1">
+                <label for="radius-select" class="text-xs font-medium text-slate-500">搜尋範圍上限：</label>
+                <select id="radius-select" onchange="changeRadius()" class="text-xs bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:border-orange-500">
+                    <option value="1000">1 公里以內</option>
+                    <option value="2000" selected>2 公里以內</option>
+                    <option value="3000">3 公里以內</option>
+                    <option value="5000">5 公里以內</option>
                 </select>
             </div>
         </div>
 
         <!-- 抽獎/決定區 -->
-        <div
-            class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center text-center gap-4">
-            <div id="roulette-box"
-                class="w-full py-8 bg-gradient-to-br from-orange-400 to-amber-500 rounded-2xl text-white shadow-inner flex flex-col items-center justify-center min-h-[140px] px-4 transition-all duration-300">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center text-center gap-4">
+            <div id="roulette-box" class="w-full py-8 bg-gradient-to-br from-orange-400 to-amber-500 rounded-2xl text-white shadow-inner flex flex-col items-center justify-center min-h-[140px] px-4 transition-all duration-300">
                 <span id="result-title" class="text-sm opacity-90">準備好了嗎？</span>
                 <h2 id="result-name" class="text-xl font-bold mt-1">點擊下方按鈕抽美食！</h2>
             </div>
 
-            <button id="draw-btn" onclick="startRoulette()" disabled
-                class="w-full py-3.5 bg-slate-200 text-slate-400 font-bold rounded-xl shadow-md transition-all cursor-not-allowed">
+            <button id="draw-btn" onclick="startRoulette()" disabled class="w-full py-3.5 bg-slate-200 text-slate-400 font-bold rounded-xl shadow-md transition-all cursor-not-allowed">
                 🎲 開始隨機抽獎
             </button>
-
+            
             <div id="nav-container" class="w-full hidden">
-                <a id="nav-link" href="#" target="_blank"
-                    class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition">
+                <a id="nav-link" href="#" target="_blank" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition">
                     📍 開啟 Google 地圖導航
                 </a>
             </div>
@@ -87,22 +85,22 @@
 
     <!-- JavaScript 邏輯 -->
     <script>
-        let currentLat = null;
-        let currentLng = null;
+        let currentLat = 22.6273; // 預設高雄市中心緯度
+        let currentLng = 120.3014; // 預設高雄市中心經度
         let restaurants = [];
 
         // 頁面載入時自動定位
-        window.onload = function () {
+        window.onload = function() {
             getLocation();
         };
 
-        // 1. 取得當下位置
+        // 1. 取得當下位置 (GPS)
         function getLocation() {
             const statusText = document.getElementById('status-text');
             statusText.innerHTML = "📡 正在讀取 GPS 定位...";
-
+            
             if (!navigator.geolocation) {
-                statusText.innerHTML = "❌ 您的瀏覽器不支援地理定位功能";
+                statusText.innerHTML = "❌ 瀏覽器不支援定位，請使用手動輸入";
                 loadMockRestaurants();
                 return;
             }
@@ -111,17 +109,44 @@
                 (position) => {
                     currentLat = position.coords.latitude;
                     currentLng = position.coords.longitude;
-                    statusText.innerHTML = `✅ 已定位成功<br><span class="text-xs text-slate-400">緯度: ${currentLat.toFixed(4)}, 經度: ${currentLng.toFixed(4)}</span>`;
-
-                    // 取得位置後，抓取附近餐廳
+                    statusText.innerHTML = `✅ GPS 定位成功<br><span class="text-xs text-slate-400">緯度: ${currentLat.toFixed(4)}, 經度: ${currentLng.toFixed(4)}</span>`;
                     fetchNearbyRestaurants();
                 },
                 (error) => {
-                    statusText.innerHTML = "⚠️ 定位失敗或拒絕權限，已載入預設範圍餐廳。";
+                    statusText.innerHTML = "⚠️ 定位失敗（可能因瀏覽器安全限制）。請嘗試在下方「手動輸入地標」。";
                     loadMockRestaurants();
                 },
-                { timeout: 10000, maximumAge: 60000 }
+                { timeout: 8000, maximumAge: 60000, enableHighAccuracy: true }
             );
+        }
+
+        // 手動輸入地址轉經緯度 (利用免費的 Nominatim API)
+        async function searchByManualLocation() {
+            const keyword = document.getElementById('manual-location').value.trim();
+            const statusText = document.getElementById('status-text');
+            
+            if (!keyword) {
+                alert('請輸入欲查詢的地標或路名！');
+                return;
+            }
+
+            statusText.innerHTML = `🔍 正在搜尋「${keyword}」的位置...`;
+
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(keyword)}`);
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    currentLat = parseFloat(data[0].lat);
+                    currentLng = parseFloat(data[0].lon);
+                    statusText.innerHTML = `✅ 已切換至：${data[0].display_name.substring(0, 30)}...`;
+                    fetchNearbyRestaurants();
+                } else {
+                    statusText.innerHTML = `❌ 找不到「${keyword}」的座標，請嘗試更明確的地名。`;
+                }
+            } catch (e) {
+                statusText.innerHTML = `⚠️ 座標轉換失敗，請稍後再試。`;
+            }
         }
 
         // 當使用者改變距離選單時觸發
@@ -131,35 +156,32 @@
             }
         }
 
-        // 2. 抓取附近餐廳 (利用 OpenStreetMap Overpass API)
+        // 2. 抓取附近餐廳 (Overpass API 的 around 本身即為包含從中心點向外直到該半徑的範圍)
         async function fetchNearbyRestaurants() {
-            if (currentLat === null || currentLng === null) {
-                loadMockRestaurants();
-                return;
-            }
-
             const listContainer = document.getElementById('restaurant-list');
             listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在依選擇範圍搜尋美食...</p>';
 
-            // 從下拉選單取得公尺數
-            const radius = document.getElementById('radius-select').value;
+            const radius = document.getElementById('radius-select').value; 
             const query = `[out:json][timeout:10];(node["amenity"~"restaurant|fast_food|cafe"](around:${radius},${currentLat},${currentLng});way["amenity"~"restaurant|fast_food|cafe"](around:${radius},${currentLat},${currentLng}););out body;`;
             const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
 
             try {
                 const response = await fetch(url);
                 const data = await response.json();
-
+                
                 restaurants = data.elements
                     .filter(item => item.tags && item.tags.name)
                     .map(item => ({
                         name: item.tags.name,
-                        lat: item.lat || (item.center && item.center.lat),
-                        lon: item.lon || (item.center && item.center.lon),
                         type: item.tags.cuisine || item.tags.amenity || '美食'
                     }));
 
-                // 如果抓不到夠多的資料，補一些通用的備用資料
+                // 移除重複名稱的餐廳
+                restaurants = Array.from(new Set(restaurants.map(r => r.name)))
+                    .map(name => {
+                        return restaurants.find(r => r.name === name);
+                    });
+
                 if (restaurants.length < 3) {
                     loadMockRestaurants();
                 } else {
@@ -174,11 +196,11 @@
         // 備用餐廳資料
         function loadMockRestaurants() {
             restaurants = [
-                { name: "巷仔口陽春麵", type: "小吃", lat: currentLat ? currentLat + 0.001 : 22.62, lon: currentLng ? currentLng + 0.001 : 120.30 },
-                { name: "轉角咖啡輕食", type: "咖啡廳", lat: currentLat ? currentLat - 0.001 : 22.62, lon: currentLng ? currentLng - 0.001 : 120.30 },
-                { name: "川味牛肉麵館", type: "麵食", lat: currentLat ? currentLat + 0.002 : 22.62, lon: currentLng ? currentLng - 0.001 : 120.30 },
-                { name: "日式平價壽司丼飯", type: "日式料理", lat: currentLat ? currentLat - 0.002 : 22.62, lon: currentLng ? currentLng + 0.002 : 120.30 },
-                { name: "健康低卡水煮餐", type: "便當", lat: currentLat ? currentLat + 0.0015 : 22.62, lon: currentLng ? currentLng + 0.0015 : 120.30 }
+                { name: "巷仔口陽春麵", type: "小吃" },
+                { name: "轉角咖啡輕食", type: "咖啡廳" },
+                { name: "川味牛肉麵館", type: "麵食" },
+                { name: "日式平價壽司丼飯", type: "日式料理" },
+                { name: "健康低卡水煮餐", type: "便當" }
             ];
             renderRestaurants();
         }
@@ -221,9 +243,9 @@
             drawBtn.disabled = true;
             navContainer.classList.add('hidden');
             resultTitle.innerText = "🎲 命運轉動中...";
-
+            
             let counter = 0;
-            const totalSteps = 20;
+            const totalSteps = 20; 
             let speed = 50;
 
             function shuffleAnimation() {
@@ -234,12 +256,12 @@
 
                 counter++;
                 if (counter < totalSteps) {
-                    speed += 15;
+                    speed += 15; 
                     setTimeout(shuffleAnimation, speed);
                 } else {
                     const finalIndex = Math.floor(Math.random() * restaurants.length);
                     const chosen = restaurants[finalIndex];
-
+                    
                     resultTitle.innerText = "🎉 今天決定吃這家！";
                     resultName.innerText = chosen.name;
                     drawBtn.disabled = false;
@@ -256,5 +278,4 @@
         }
     </script>
 </body>
-
 </html>
