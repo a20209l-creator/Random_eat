@@ -12,7 +12,7 @@
     <!-- 頂部標題 -->
     <header class="w-full bg-white shadow-sm py-4 px-6 text-center">
         <h1 class="text-2xl font-bold text-orange-500">🍽️ 隨機食光 Random Eat</h1>
-        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，只找真實明確的店家！</p>
+        <p class="text-xs text-slate-400 mt-1">選擇障礙的救星，只找附近的真實店家！</p>
     </header>
 
     <!-- 主要內容區 -->
@@ -146,14 +146,28 @@
             }
         }
 
+        // 計算兩點之間的直線距離 (單位: 公里)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // 地球半徑 (km)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
         async function fetchNearbyRestaurants() {
             const listContainer = document.getElementById('restaurant-list');
             listContainer.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">🔍 正在搜尋附近真實店家...</p>';
 
-            const radius = document.getElementById('radius-select').value; 
-            const query = `[out:json][timeout:10];(node["amenity"="restaurant"](around:${radius},${currentLat},${currentLng});way["amenity"="restaurant"](around:${radius},${currentLat},${currentLng});node["amenity"="fast_food"](around:${radius},${currentLat},${currentLng});way["amenity"="fast_food"](around:${radius},${currentLat},${currentLng}););out body;`;
+            const radiusMeters = parseInt(document.getElementById('radius-select').value); 
+            const radiusKm = radiusMeters / 1000;
+
+            const query = `[out:json][timeout:10];(node["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});way["amenity"="restaurant"](around:${radiusMeters},${currentLat},${currentLng});node["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng});way["amenity"="fast_food"](around:${radiusMeters},${currentLat},${currentLng}););out body geom;`;
             
-            // 使用更穩定的備用 API 伺服器節點
             const url = `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`;
 
             try {
@@ -164,27 +178,33 @@
                 }
 
                 const data = await response.json();
-                
-                // 定義黑名單：過濾掉統稱或不合適的名稱
                 const genericNames = ["餐廳", "小吃", "速食", "飮食店", "便當", "水煮餐", "健康餐盒", "restaurant", "food", "cafe"];
 
-                restaurants = data.elements
+                let rawRestaurants = data.elements
                     .filter(item => item.tags && item.tags.name)
-                    .map(item => ({
-                        name: item.tags.name.trim(),
-                        type: item.tags.cuisine || item.tags.amenity || '餐飲'
-                    }))
+                    .map(item => {
+                        const itemLat = item.lat || (item.center && item.center.lat);
+                        const itemLon = item.lon || (item.center && item.center.lon);
+                        const dist = (itemLat && itemLon) ? calculateDistance(currentLat, currentLng, itemLat, itemLon) : 0;
+                        return {
+                            name: item.tags.name.trim(),
+                            type: item.tags.cuisine || item.tags.amenity || '餐飲',
+                            distance: dist
+                        };
+                    })
                     .filter(r => {
                         const lowerName = r.name.toLowerCase();
                         const isGeneric = genericNames.some(g => lowerName === g || lowerName.includes("健康低卡"));
-                        return r.name.length > 1 && !isGeneric;
+                        // 【嚴格過濾】確保名稱有效且距離絕對小於等於選擇的半徑範圍
+                        return r.name.length > 1 && !isGeneric && r.distance <= radiusKm;
                     });
 
                 // 移除重複名稱
-                restaurants = Array.from(new Set(restaurants.map(r => r.name)))
-                    .map(name => restaurants.find(r => r.name === name));
+                restaurants = Array.from(new Set(rawRestaurants.map(r => r.name)))
+                    .map(name => rawRestaurants.find(r => r.name === name));
 
                 if (restaurants.length < 2) {
+                    console.log("附近實體店家較少，載入在地預設範圍店家");
                     loadMockRestaurants();
                 } else {
                     renderRestaurants();
@@ -197,11 +217,10 @@
 
         function loadMockRestaurants() {
             restaurants = [
-                { name: "好食·日輕食健康餐盒", type: "健康餐" },
-                { name: "卜派食堂 低GI水煮健康餐盒", type: "健康餐" },
-                { name: "鄧白盒子健康低卡餐盒", type: "健康餐" },
-                { name: "均衡食堂", type: "健康餐" },
-                { name: "水煮食代健康餐食專賣", type: "健康餐" }
+                { name: "好食·日輕食健康餐盒", type: "健康餐", distance: 0.5 },
+                { name: "均衡食堂", type: "健康餐", distance: 0.8 },
+                { name: "巷仔口陽春麵", type: "小吃", distance: 0.3 },
+                { name: "川味牛肉麵館", type: "麵食", distance: 0.7 }
             ];
             renderRestaurants();
         }
@@ -215,10 +234,14 @@
             listContainer.innerHTML = '';
 
             restaurants.forEach((r, index) => {
+                const distText = r.distance ? `約 ${(r.distance * 1000).toFixed(0)}公尺` : '';
                 listContainer.innerHTML += `
                     <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-xs">
-                        <span class="font-medium text-slate-700">${index + 1}. ${r.name}</span>
-                        <span class="text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-100">${r.type}</span>
+                        <div>
+                            <span class="font-medium text-slate-700">${index + 1}. ${r.name}</span>
+                            <span class="text-slate-400 text-[10px] block">${distText}</span>
+                        </div>
+                        <span class="text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100 h-fit">${r.type}</span>
                     </div>
                 `;
             });
